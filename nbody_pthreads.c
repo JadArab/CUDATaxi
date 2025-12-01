@@ -1,8 +1,4 @@
-// nbody_pthreads.c (fixed)
-// - wall-clock timing (clock_gettime)
-// - atomic progress counter + rare printing (mutex only for print)
-// - accepts thread count via argv[1]
-// - writes results to nbody_results_pthreads_<N>threads.csv
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,7 +31,7 @@ typedef struct {
     long end_idx; // exclusive
     long *progress_counter;            // shared atomic counter
     long progress_report_step;         // how often to print (in increments)
-    pthread_mutex_t *print_mutex;      // mutex only used for printing
+    pthread_mutex_t *print_mutex;      // mutex only used for printin
 } ThreadArg;
 
 static inline double to_radians(double deg) { return deg * (M_PI / 180.0); }
@@ -69,10 +65,10 @@ void *worker(void *arg) {
         }
         particles[i].congestion_score = local_score;
 
-        // atomic increment progress counter by 1 (lock-free)
+
         long prev = __atomic_add_fetch(ta->progress_counter, 1L, __ATOMIC_RELAXED);
 
-        // rare print path: only when hitting the configured reporting step
+    
         if (ta->progress_report_step > 0 && (prev % ta->progress_report_step == 0)) {
             pthread_mutex_lock(ta->print_mutex);
             double pct = (double)prev / (double)ta->n_particles * 100.0;
@@ -111,7 +107,7 @@ int main(int argc, char **argv) {
     }
     fclose(fp);
 
-    // determine thread count (argv[1] overrides)
+    
     int nthreads = (int)sysconf(_SC_NPROCESSORS_ONLN);
     if (nthreads < 1) nthreads = 4;
     if (argc > 1) {
@@ -122,7 +118,7 @@ int main(int argc, char **argv) {
 
     printf("Using %d threads\n", nthreads);
 
-    // prepare threading structures
+    
     pthread_t *threads = malloc(sizeof(pthread_t) * nthreads);
     ThreadArg *args = malloc(sizeof(ThreadArg) * nthreads);
     if (!threads || !args) { fprintf(stderr, "Memory allocation failed for threads.\n"); free(particles); return 1; }
@@ -131,17 +127,16 @@ int main(int argc, char **argv) {
     pthread_mutex_init(&print_mutex, NULL);
 
     long progress_counter = 0;
-    // reporting step: every ~5% (but at least 1)
     long progress_step = n_particles / 20;
     if (progress_step < 1) progress_step = 1;
 
     long chunk = (n_particles + nthreads - 1) / nthreads;
 
-    // start wall-clock timer
+
     struct timespec tstart, tend;
     clock_gettime(CLOCK_MONOTONIC, &tstart);
 
-    // create worker threads
+    
     for (int t = 0; t < nthreads; t++) {
         long start_idx = t * chunk;
         long end_idx = start_idx + chunk;
@@ -158,29 +153,27 @@ int main(int argc, char **argv) {
 
         if (pthread_create(&threads[t], NULL, worker, &args[t]) != 0) {
             fprintf(stderr, "Error: pthread_create failed for thread %d\n", t);
-            // join previously created threads
+            
             for (int k = 0; k < t; k++) pthread_join(threads[k], NULL);
             pthread_mutex_destroy(&print_mutex);
             free(threads); free(args); free(particles);
             return 1;
         }
     }
-
-    // join
     for (int t = 0; t < nthreads; t++) pthread_join(threads[t], NULL);
 
-    // end wall-clock timer
+    
     clock_gettime(CLOCK_MONOTONIC, &tend);
     double elapsed = (tend.tv_sec - tstart.tv_sec) + (tend.tv_nsec - tstart.tv_nsec) / 1e9;
 
-    // final progress print
+    
     printf("\rProgress: 100.0%%\n");
     printf("\n------------------------------------------------\n");
     printf("pthreads Processing Time: %.4f seconds\n", elapsed);
     printf("Total Interactions Processed: ~%.2e\n", (double)n_particles * WINDOW_SIZE * 2);
     printf("------------------------------------------------\n");
 
-    // write output file named with thread count to avoid overwriting
+    
     char out_fname[256];
     snprintf(out_fname, sizeof(out_fname), OUT_BASENAME "_%dthreads.csv", nthreads);
     printf("Saving results to %s...\n", out_fname);
