@@ -67,15 +67,15 @@ int main(int argc, char **argv) {
             }
         }
         fclose(fp);
-        // adjust n_particles in case some lines failed parse
+    
         n_particles = idx;
         printf("Rank 0: loaded %ld particles\n", n_particles);
     }
 
-    // Broadcast n_particles to all ranks
+
     MPI_Bcast(&n_particles, 1, MPI_LONG, 0, MPI_COMM_WORLD);
 
-    // Allocate particles on non-root ranks
+
     if (rank != 0) {
         particles = (Particle*)malloc(n_particles * sizeof(Particle));
         if (!particles) {
@@ -84,20 +84,20 @@ int main(int argc, char **argv) {
         }
     }
 
-    // Broadcast raw particle bytes to all ranks (fast and simple)
+   
     MPI_Bcast(particles, (int)(n_particles * sizeof(Particle)), MPI_BYTE, 0, MPI_COMM_WORLD);
 
     MPI_Barrier(MPI_COMM_WORLD);
     double t0 = MPI_Wtime();
 
-    // compute distribution: block distribution with remainder
+ 
     long base = n_particles / size;
     int rem = (int)(n_particles % size);
     long start = rank * base + (rank < rem ? rank : rem);
     long count = base + (rank < rem ? 1 : 0);
-    long end = start + count; // [start, end)
+    long end = start + count;
 
-    // Each process will compute local_scores of length count
+ 
     double *local_scores = (double*)malloc(count * sizeof(double));
     if (!local_scores) {
         fprintf(stderr, "Rank %d: local_scores allocation failed\n", rank);
@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
         local_scores[local_i] = local_score;
     }
 
-    // Prepare counts and displacements for gathering results to root
+  
     int *recvcounts = NULL;
     int *displs = NULL;
     if (rank == 0) {
@@ -135,7 +135,7 @@ int main(int argc, char **argv) {
         for (int r = 1; r < size; ++r) displs[r] = displs[r-1] + recvcounts[r-1];
     }
 
-    // global_scores only exists on root
+   
     double *global_scores = NULL;
     if (rank == 0) global_scores = (double*)malloc(n_particles * sizeof(double));
 
@@ -151,14 +151,14 @@ int main(int argc, char **argv) {
         printf("Total Interactions (approx): ~%.2e\n", (double)n_particles * WINDOW_SIZE * 2);
         printf("------------------------------------------------\n");
 
-        // write output file using global_scores
+  
         FILE *out = fopen(OUTPUT_FILE, "w");
         if (!out) {
             fprintf(stderr, "Cannot open output file %s for writing\n", OUTPUT_FILE);
         } else {
             fprintf(out, "id,lat,lon,time_min,congestion_score\n");
             for (long i = 0; i < n_particles; ++i) {
-                // use global_scores[i] as score
+          
                 fprintf(out, "%s,%.5f,%.5f,%ld,%.4f\n",
                         particles[i].id, particles[i].lat, particles[i].lon,
                         particles[i].time_min, global_scores[i]);
@@ -168,7 +168,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    // cleanup
+
     free(local_scores);
     free(particles);
     if (rank == 0) {
